@@ -288,7 +288,20 @@ def get_ranges(acc, _retry=0):
     if result:
         _ranges_cache[idx] = (now, result)
     return result
-
+    
+def get_ranges_cached(acc):
+    idx  = acc["idx"]
+    now  = time.time()
+    if now < _ranges_429_until.get(idx, 0):
+        entry = _ranges_cache.get(idx)
+        return entry[1] if entry else []
+    entry = _ranges_cache.get(idx)
+    if entry:
+        ts, cached = entry
+        if now - ts < RANGES_CACHE_TTL:
+            return cached
+    return get_ranges(acc)
+    
 def get_numbers(acc, rng, _retry=0):
     ivas_limiter.wait()
     
