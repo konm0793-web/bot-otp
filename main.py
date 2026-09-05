@@ -93,6 +93,26 @@ _active_worker_idx    = 0
 _worker_limited_until = {}
 _last_log_limit_time  = 0
 WORKER_LIMIT_COOLDOWN = 900   # 15 menit
+class RateLimiter:
+    def __init__(self, max_calls: int, period: float):
+        self.max_calls = max_calls
+        self.period = period
+        self.calls = []
+        self.lock = threading.Lock()
+
+    def wait(self):
+        with self.lock:
+            now = time.time()
+            self.calls = [t for t in self.calls if now - t < self.period]
+            if len(self.calls) >= self.max_calls:
+                sleep_time = self.period - (now - self.calls[0])
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+                now = time.time()
+                self.calls = [t for t in self.calls if now - t < self.period]
+            self.calls.append(now)
+
+ivas_limiter = RateLimiter(max_calls=2, period=3.0)
 
 def get_base():
     with _worker_lock:
@@ -227,13 +247,15 @@ def _recv_headers(base):
         "Referer":          f"{base}/portal/sms/received",
         "Origin":           "https://ivasms.com",
     }
-
 def get_ranges(acc, _retry=0):
     idx = acc["idx"]
     now = time.time()
     if now < _ranges_429_until.get(idx, 0):
         entry = _ranges_cache.get(idx)
         return entry[1] if entry else []
+    
+    ivas_limiter.wait()
+    
     base          = get_base()
     today         = datetime.now().strftime("%Y-%m-%d")
     csrf          = get_recv_csrf(acc)
@@ -267,21 +289,9 @@ def get_ranges(acc, _retry=0):
         _ranges_cache[idx] = (now, result)
     return result
 
-def get_ranges_cached(acc):
-    idx  = acc["idx"]
-    now  = time.time()
-    if now < _ranges_429_until.get(idx, 0):
-        entry = _ranges_cache.get(idx)
-        return entry[1] if entry else []
-    entry = _ranges_cache.get(idx)
-    if entry:
-        ts, cached = entry
-        if now - ts < RANGES_CACHE_TTL:
-            return cached
-    return get_ranges(acc)
-
 def get_numbers(acc, rng, _retry=0):
-    time.sleep(0.4)
+    ivas_limiter.wait()
+    
     base          = get_base()
     today         = datetime.now().strftime("%Y-%m-%d")
     csrf          = get_recv_csrf(acc)
@@ -306,9 +316,10 @@ def get_numbers(acc, rng, _retry=0):
         except:
             pass
     return list(set(numbers))
-    
+
 def get_sms(acc, rng, number, _retry=0):
-    time.sleep(0.3)
+    ivas_limiter.wait()
+    
     base          = get_base()
     today         = datetime.now().strftime("%Y-%m-%d")
     csrf          = get_recv_csrf(acc)
@@ -342,6 +353,7 @@ def get_sms(acc, rng, number, _retry=0):
     except Exception as e:
         _log("SMS", f"parse error: {e}", Fore.RED)
     return list(dict.fromkeys(sms_texts))
+    
     
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
