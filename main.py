@@ -43,7 +43,7 @@ COOKIE_FILE        = "cookie.json"
 CACHE_FILE         = "file/sent_cache.json"
 GROUPS_FILE        = "file/groups.json"     # daftar grup tambahan via /addbot
 MAX_CACHE          = 2000
-POLL_INTERVAL_MAX  = 12.0
+POLL_INTERVAL_MAX  = 15.0
 KEEPALIVE_INTERVAL = 480    # detik — ping /portal tiap 8 menit
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
