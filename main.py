@@ -498,6 +498,8 @@ def save_sent_cache_now(cache: set):
         _log("CACHE", f"save error: {e}", Fore.YELLOW)
 
 sent_cache = load_sent_cache()
+IS_INITIALIZING = True  # Flag penanda bot baru booting
+
 
 def cache_add(uid: str):
     global _cache_dirty, _last_cache_save
@@ -779,33 +781,24 @@ def poll_one(acc) -> bool:
 
         local_found = False
         for sms in sms_list:
-            # Match jam (03:05 atau 03:05:12) dari teks SMS
-            time_match = re.search(r"\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b", sms)
-            if time_match:
-                now = datetime.now()
-                h = int(time_match.group(1))
-                m = int(time_match.group(2))
-                s = int(time_match.group(3)) if time_match.group(3) else 0
-                
-                sms_dt = now.replace(hour=h, minute=m, second=s, microsecond=0)
-                if sms_dt > now:
-                    sms_dt -= timedelta(days=1)
-                
-                # Abaikan SMS yang umurnya lebih dari 10 menit (600 detik)
-                if (now - sms_dt).total_seconds() > 600:
-                    continue
-                    
-
             clean = re.sub(r"\s+", " ", sms.replace("<#>", "")).strip()
             uid   = hashlib.md5(f"{num}-{clean}".encode()).hexdigest()
-                
+
             with _sent_cache_lock:
                 if uid in sent_cache:
                     continue
 
+            # Kalau bot baru booting/restart, MASUKKAN KE CACHE TAPI JANGAN KIRIM TELEGRAM
+            if IS_INITIALIZING:
+                cache_add(uid)
+                continue
+
             matches = _OTP_RE.findall(sms)
             if not matches:
                 continue
+
+            # ... (sisanya kode kirim OTP Telegram & log kamu seperti biasa) ...
+            
 
             otp                       = re.sub(r"[^0-9]", "", matches[0])
             svc                       = detect_service(sms)
@@ -863,16 +856,26 @@ def poll_one(acc) -> bool:
 # ACCOUNT WORKER
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def account_worker(acc):
+    global IS_INITIALIZING
     sleep_time = 2.0
+    
     while True:
         try:
-            found      = poll_one(acc)
+            found = poll_one(acc)
+            
+            # Matikan flag penanda booting setelah putaran poll_one pertama selesai
+            if IS_INITIALIZING:
+                IS_INITIALIZING = False
+                _log("CONFIG", f"akun #{acc['idx']}: Warmup selesai, siap terima OTP baru!", Fore.CYAN)
+
             sleep_time = 1.0 if found else min(sleep_time + 0.5, POLL_INTERVAL_MAX)
         except Exception as e:
             _log("WORKER", f"akun #{acc['idx']}: {e}", Fore.RED)
             sleep_time = min(sleep_time * 2, 10.0)
+        
         if sleep_time > 0:
             time.sleep(sleep_time)
+            
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # KEEPALIVE
