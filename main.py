@@ -112,7 +112,7 @@ class RateLimiter:
                 self.calls = [t for t in self.calls if now - t < self.period]
             self.calls.append(now)
 
-ivas_limiter = RateLimiter(max_calls=2, period=2.0)
+ivas_limiter = RateLimiter(max_calls=3, period=2.0)
 
 def get_base():
     with _worker_lock:
@@ -846,7 +846,7 @@ def poll_one(acc) -> bool:
             _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
             return False
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
+    with ThreadPoolExecutor(max_workers=3) as executor:
         results = list(executor.map(worker_task, targets))
 
     return any(results)
