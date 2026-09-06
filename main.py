@@ -17,7 +17,7 @@ import signal
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from http.server import HTTPServer, BaseHTTPRequestHandler
-
+from datetime import datetime, timedelta
 import requests
 import phonenumbers
 from phonenumbers import geocoder
@@ -779,9 +779,19 @@ def poll_one(acc) -> bool:
 
         local_found = False
         for sms in sms_list:
+            time_match = re.search(r"\b(\d{2}):(\d{2}):(\d{2})\b", sms)
+            if time_match:
+                now = datetime.now()
+                h, m, s = map(int, time_match.groups())
+                sms_dt = now.replace(hour=h, minute=m, second=s, microsecond=0)
+                if sms_dt > now:
+                    sms_dt -= timedelta(days=1)
+                if (now - sms_dt).total_seconds() > 600:
+                    continue
+
             clean = re.sub(r"\s+", " ", sms.replace("<#>", "")).strip()
             uid   = hashlib.md5(f"{num}-{clean}".encode()).hexdigest()
-
+                
             with _sent_cache_lock:
                 if uid in sent_cache:
                     continue
