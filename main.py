@@ -112,7 +112,7 @@ class RateLimiter:
                 self.calls = [t for t in self.calls if now - t < self.period]
             self.calls.append(now)
 
-ivas_limiter = RateLimiter(max_calls=2, period=3.0)
+ivas_limiter = RateLimiter(max_calls=5, period=3.0)
 
 def get_base():
     with _worker_lock:
@@ -753,6 +753,8 @@ def tg_update_listener():
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # POLL ONE ACCOUNT
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+from concurrent.futures import ThreadPoolExecutor
+
 _OTP_RE = re.compile(r"\b\d{3}[- ]?\d{3}\b")
 
 def poll_one(acc) -> bool:
@@ -807,6 +809,8 @@ def poll_one(acc) -> bool:
 
         return local_found
 
+    # Kumpulkan semua pasangan target nomor untuk diproses paralel
+    targets = []
     for rng in ranges:
         fallback_country, code = parse_range(rng)
         try:
@@ -818,14 +822,24 @@ def poll_one(acc) -> bool:
             continue
 
         for n in numbers:
-            try:
-                if process_number(rng, n, fallback_country, code):
-                    found = True
-            except Exception as e:
-                _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
-            time.sleep(0.5)
+            targets.append((rng, n, fallback_country, code))
 
-    return found
+    if not targets:
+        return False
+
+    # Jalankan pengecekan nomor secara paralel (5 worker bersamaan)
+    def worker_task(item):
+        rng, n, fallback_country, code = item
+        try:
+            return process_number(rng, n, fallback_country, code)
+        except Exception as e:
+            _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
+            return False
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        results = list(executor.map(worker_task, targets))
+
+    return any(results)
     
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
