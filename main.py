@@ -779,15 +779,22 @@ def poll_one(acc) -> bool:
 
         local_found = False
         for sms in sms_list:
-            time_match = re.search(r"\b(\d{2}):(\d{2}):(\d{2})\b", sms)
+            # Match jam (03:05 atau 03:05:12) dari teks SMS
+            time_match = re.search(r"\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b", sms)
             if time_match:
                 now = datetime.now()
-                h, m, s = map(int, time_match.groups())
+                h = int(time_match.group(1))
+                m = int(time_match.group(2))
+                s = int(time_match.group(3)) if time_match.group(3) else 0
+                
                 sms_dt = now.replace(hour=h, minute=m, second=s, microsecond=0)
                 if sms_dt > now:
                     sms_dt -= timedelta(days=1)
+                
+                # Abaikan SMS yang umurnya lebih dari 10 menit (600 detik)
                 if (now - sms_dt).total_seconds() > 600:
                     continue
+                    
 
             clean = re.sub(r"\s+", " ", sms.replace("<#>", "")).strip()
             uid   = hashlib.md5(f"{num}-{clean}".encode()).hexdigest()
