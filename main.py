@@ -112,7 +112,7 @@ class RateLimiter:
                 self.calls = [t for t in self.calls if now - t < self.period]
             self.calls.append(now)
 
-ivas_limiter = RateLimiter(max_calls=3, period=2.0)
+ivas_limiter = RateLimiter(max_calls=1, period=2.0)  # Cuma 1 request per 2 detik per worker
 
 def get_base():
     with _worker_lock:
@@ -841,12 +841,15 @@ def poll_one(acc) -> bool:
     def worker_task(item):
         rng, n, fallback_country, code = item
         try:
+            if IS_INITIALIZING:
+                time.sleep(1.0)  # Delay 1 detik per nomor saat warmup biar gak dimukul rate limit
             return process_number(rng, n, fallback_country, code)
         except Exception as e:
             _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
             return False
+            
 
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=1) as executor:  # Uji coba dengan 1 worker dulu (sekuensial)
         results = list(executor.map(worker_task, targets))
 
     return any(results)
