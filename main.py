@@ -97,7 +97,7 @@ class RateLimiter:
                 self.calls = [t for t in self.calls if now - t < self.period]
             self.calls.append(now)
 
-ivas_limiter = RateLimiter(max_calls=2, period=1.0)
+ivas_limiter = RateLimiter(max_calls=1, period=1.5)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # WORKER POOL  (proxy fallback jika kena rate-limit)
