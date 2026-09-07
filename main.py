@@ -112,7 +112,7 @@ class RateLimiter:
                 self.calls = [t for t in self.calls if now - t < self.period]
             self.calls.append(now)
 
-ivas_limiter = RateLimiter(max_calls=3, period=1.5)  # Naik dari 2/3.0s -> 3/1.5s
+ivas_limiter = RateLimiter(max_calls=2, period=3.0)  # Aman dari blokir WAF IVAS
 
 def get_base():
     with _worker_lock:
@@ -826,12 +826,13 @@ def poll_one(acc) -> bool:
             continue
 
         for n in numbers:
-            try:
-                if process_number(rng, n, fallback_country, code):
-                    found = True
-            except Exception as e:
-                _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
-            time.sleep(0.1)
+           try:
+              if process_number(rng, n, fallback_country, code):
+                 found = True
+        except Exception as e:
+            _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
+        time.sleep(0.2)  # Sweet spot biar gak kepicu WAF
+    
 
     # Matikan mode warmup setelah perulangan pertama selesai
     if IS_INITIALIZING:
@@ -850,13 +851,13 @@ def account_worker(acc):
     while True:
         try:
             found = poll_one(acc)
-            # Begitu nemu OTP (found=True), BASS/LANGSUNG putar ulang tanpa delay (0.0s)
-            sleep_time = 0.0 if found else min(sleep_time + 0.5, POLL_INTERVAL_MAX)
+            # Kalau ada OTP, jeda tipis 0.3 detik buat sapu sisa OTP tanpa bikin 429
+            sleep_time = 0.3 if found else min(sleep_time + 0.5, POLL_INTERVAL_MAX)
         except Exception as e:
             _log("WORKER", f"akun #{acc['idx']}: {e}", Fore.RED)
             sleep_time = min(sleep_time * 2, 10.0)
         if sleep_time > 0:
-            time.sleep(sleep_time)
+            time.sleep(sleep_time)         
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # KEEPALIVE
