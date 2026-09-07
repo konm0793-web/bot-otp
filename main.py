@@ -43,7 +43,7 @@ COOKIE_FILE        = "cookie.json"
 CACHE_FILE         = "file/sent_cache.json"
 GROUPS_FILE        = "file/groups.json"     # daftar grup tambahan via /addbot
 MAX_CACHE          = 2000
-POLL_INTERVAL_MAX  = 12.0
+POLL_INTERVAL_MAX  = 5.0
 KEEPALIVE_INTERVAL = 480    # detik — ping /portal tiap 8 menit
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -97,7 +97,7 @@ class RateLimiter:
                 self.calls = [t for t in self.calls if now - t < self.period]
             self.calls.append(now)
 
-ivas_limiter = RateLimiter(max_calls=1, period=1.5)
+Ivas_limiter = RateLimiter(max_calls=2, period=3.0)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # WORKER POOL  (proxy fallback jika kena rate-limit)
@@ -861,23 +861,17 @@ def poll_one(acc) -> bool:
 # ACCOUNT WORKER
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def account_worker(acc):
-    global IS_INITIALIZING
-    
+    sleep_time = 2.0
     while True:
         try:
-            found = poll_one(acc)
-            
-            if IS_INITIALIZING:
-                IS_INITIALIZING = False
-                _log("CONFIG", f"akun #{acc['idx']}: Warmup selesai, siap terima OTP baru!", Fore.CYAN)
-
+            found      = poll_one(acc)
+            sleep_time = 1.0 if found else min(sleep_time + 0.5, POLL_INTERVAL_MAX)
         except Exception as e:
             _log("WORKER", f"akun #{acc['idx']}: {e}", Fore.RED)
-
-        # Polling konstan 1.5 - 2.0 detik biar serba instan & gak kena delay 12 detik
-        time.sleep(2.0)
+            sleep_time = min(sleep_time * 2, 10.0)
+        if sleep_time > 0:
+            time.sleep(sleep_time)
             
-
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # KEEPALIVE
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
