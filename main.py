@@ -826,13 +826,12 @@ def poll_one(acc) -> bool:
             continue
 
         for n in numbers:
-           try:
-              if process_number(rng, n, fallback_country, code):
-                 found = True
-        except Exception as e:
-            _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
-        time.sleep(0.2)  # Sweet spot biar gak kepicu WAF
-    
+            try:
+                if process_number(rng, n, fallback_country, code):
+                    found = True
+            except Exception as e:
+                _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
+            time.sleep(0.2)
 
     # Matikan mode warmup setelah perulangan pertama selesai
     if IS_INITIALIZING:
@@ -840,7 +839,6 @@ def poll_one(acc) -> bool:
         _log("CONFIG", f"akun #{acc['idx']}: Warmup selesai, siap terima OTP baru!", Fore.CYAN)
 
     return found
-
     
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
