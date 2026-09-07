@@ -43,7 +43,7 @@ COOKIE_FILE        = "cookie.json"
 CACHE_FILE         = "file/sent_cache.json"
 GROUPS_FILE        = "file/groups.json"     # daftar grup tambahan via /addbot
 MAX_CACHE          = 2000
-POLL_INTERVAL_MAX  = 5.0
+POLL_INTERVAL_MAX  = 3.0
 KEEPALIVE_INTERVAL = 480    # detik — ping /portal tiap 8 menit
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -112,7 +112,7 @@ class RateLimiter:
                 self.calls = [t for t in self.calls if now - t < self.period]
             self.calls.append(now)
 
-ivas_limiter = RateLimiter(max_calls=2, period=3.0)
+ivas_limiter = RateLimiter(max_calls=3, period=1.5)  # Naik dari 2/3.0s -> 3/1.5s
 
 def get_base():
     with _worker_lock:
@@ -849,8 +849,9 @@ def account_worker(acc):
     sleep_time = 2.0
     while True:
         try:
-            found      = poll_one(acc)
-            sleep_time = 1.0 if found else min(sleep_time + 0.5, POLL_INTERVAL_MAX)
+            found = poll_one(acc)
+            # Begitu nemu OTP (found=True), BASS/LANGSUNG putar ulang tanpa delay (0.0s)
+            sleep_time = 0.0 if found else min(sleep_time + 0.5, POLL_INTERVAL_MAX)
         except Exception as e:
             _log("WORKER", f"akun #{acc['idx']}: {e}", Fore.RED)
             sleep_time = min(sleep_time * 2, 10.0)
