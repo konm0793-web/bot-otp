@@ -17,7 +17,7 @@ import signal
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from datetime import datetime, timedelta
+
 import requests
 import phonenumbers
 from phonenumbers import geocoder
@@ -43,7 +43,7 @@ COOKIE_FILE        = "cookie.json"
 CACHE_FILE         = "file/sent_cache.json"
 GROUPS_FILE        = "file/groups.json"     # daftar grup tambahan via /addbot
 MAX_CACHE          = 2000
-POLL_INTERVAL_MAX  = 5.0
+POLL_INTERVAL_MAX  = 12.0
 KEEPALIVE_INTERVAL = 480    # detik — ping /portal tiap 8 menit
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -76,8 +76,23 @@ def _log(tag, msg, color=Fore.CYAN):
     icon  = _LOG_ICONS.get(tag, "•")
     ts    = datetime.now().strftime("%H:%M:%S")
     label = f"{icon} {tag:<9}"
-    print(color + f" {ts} {label} {msg}" + Style.RESET_ALL, flush=True)
+    print(color + f"  {ts}  {label}  {msg}" + Style.RESET_ALL, flush=True)
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# WORKER POOL  (proxy fallback jika kena rate-limit)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WORKER_POOL = [
+    "https://plain-butterfly-d9e9.kicenivas.workers.dev",
+    "https://ivasmunchen.serverprivate1.web.id",
+    "https://ivasmsbykicenv2.kikixrakaofficial.biz.id",
+    "https://ivasbykiven.alwayskixyzshop.web.id",
+]
+
+_worker_lock          = threading.Lock()
+_active_worker_idx    = 0
+_worker_limited_until = {}
+_last_log_limit_time  = 0
+WORKER_LIMIT_COOLDOWN = 900   # 15 menit
 class RateLimiter:
     def __init__(self, max_calls: int, period: float):
         self.max_calls = max_calls
@@ -97,23 +112,7 @@ class RateLimiter:
                 self.calls = [t for t in self.calls if now - t < self.period]
             self.calls.append(now)
 
-Ivas_limiter = RateLimiter(max_calls=2, period=3.0)
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# WORKER POOL  (proxy fallback jika kena rate-limit)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-WORKER_POOL = [
-    "https://plain-butterfly-d9e9.kicenivas.workers.dev",
-    "https://ivasmunchen.serverprivate1.web.id",
-    "https://ivasmsbykicenv2.kikixrakaofficial.biz.id",
-    "https://ivasbykiven.alwayskixyzshop.web.id",
-]
-
-_worker_lock          = threading.Lock()
-_active_worker_idx    = 0
-_worker_limited_until = {}
-_last_log_limit_time  = 0
-WORKER_LIMIT_COOLDOWN = 900   # 15 menit
+ivas_limiter = RateLimiter(max_calls=2, period=3.0)
 
 def get_base():
     with _worker_lock:
@@ -499,8 +498,6 @@ def save_sent_cache_now(cache: set):
         _log("CACHE", f"save error: {e}", Fore.YELLOW)
 
 sent_cache = load_sent_cache()
-IS_INITIALIZING = True  # Flag penanda bot baru booting
-
 
 def cache_add(uid: str):
     global _cache_dirty, _last_cache_save
@@ -756,8 +753,6 @@ def tg_update_listener():
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # POLL ONE ACCOUNT
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-from concurrent.futures import ThreadPoolExecutor
-
 _OTP_RE = re.compile(r"\b\d{3}[- ]?\d{3}\b")
 
 def poll_one(acc) -> bool:
@@ -789,17 +784,9 @@ def poll_one(acc) -> bool:
                 if uid in sent_cache:
                     continue
 
-            # Kalau bot baru booting/restart, MASUKKAN KE CACHE TAPI JANGAN KIRIM TELEGRAM
-            if IS_INITIALIZING:
-                cache_add(uid)
-                continue
-
             matches = _OTP_RE.findall(sms)
             if not matches:
                 continue
-
-            # ... (sisanya kode kirim OTP Telegram & log kamu seperti biasa) ...
-            
 
             otp                       = re.sub(r"[^0-9]", "", matches[0])
             svc                       = detect_service(sms)
@@ -820,8 +807,6 @@ def poll_one(acc) -> bool:
 
         return local_found
 
-    # Kumpulkan semua pasangan target nomor untuk diproses paralel
-    targets = []
     for rng in ranges:
         fallback_country, code = parse_range(rng)
         try:
@@ -833,28 +818,14 @@ def poll_one(acc) -> bool:
             continue
 
         for n in numbers:
-            targets.append((rng, n, fallback_country, code))
+            try:
+                if process_number(rng, n, fallback_country, code):
+                    found = True
+            except Exception as e:
+                _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
+            time.sleep(0.5)
 
-    if not targets:
-        return False
-
-    # Jalankan pengecekan nomor secara paralel (5 worker bersamaan)
-    def worker_task(item):
-        rng, n, fallback_country, code = item
-        try:
-            if IS_INITIALIZING:
-                time.sleep(1.0)  # Delay 1 detik per nomor saat warmup biar gak dimukul rate limit
-            return process_number(rng, n, fallback_country, code)
-        except Exception as e:
-            _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
-            return False
-            
-
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        results = list(executor.map(worker_task, targets))
-        
-
-    return any(results)
+    return found
     
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -871,7 +842,7 @@ def account_worker(acc):
             sleep_time = min(sleep_time * 2, 10.0)
         if sleep_time > 0:
             time.sleep(sleep_time)
-            
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # KEEPALIVE
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
