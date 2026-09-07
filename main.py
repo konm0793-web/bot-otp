@@ -112,7 +112,7 @@ class RateLimiter:
                 self.calls = [t for t in self.calls if now - t < self.period]
             self.calls.append(now)
 
-ivas_limiter = RateLimiter(max_calls=1, period=2.0)  # Cuma 1 request per 2 detik per worker
+ivas_limiter: RateLimiter(max_calls=2, period=1.0)
 
 def get_base():
     with _worker_lock:
@@ -849,8 +849,9 @@ def poll_one(acc) -> bool:
             return False
             
 
-    with ThreadPoolExecutor(max_workers=1) as executor:  # Uji coba dengan 1 worker dulu (sekuensial)
+    with ThreadPoolExecutor(max_workers=3) as executor:
         results = list(executor.map(worker_task, targets))
+        
 
     return any(results)
     
@@ -860,24 +861,20 @@ def poll_one(acc) -> bool:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def account_worker(acc):
     global IS_INITIALIZING
-    sleep_time = 2.0
     
     while True:
         try:
             found = poll_one(acc)
             
-            # Matikan flag penanda booting setelah putaran poll_one pertama selesai
             if IS_INITIALIZING:
                 IS_INITIALIZING = False
                 _log("CONFIG", f"akun #{acc['idx']}: Warmup selesai, siap terima OTP baru!", Fore.CYAN)
 
-            sleep_time = 1.0 if found else min(sleep_time + 0.5, POLL_INTERVAL_MAX)
         except Exception as e:
             _log("WORKER", f"akun #{acc['idx']}: {e}", Fore.RED)
-            sleep_time = min(sleep_time * 2, 10.0)
-        
-        if sleep_time > 0:
-            time.sleep(sleep_time)
+
+        # Polling konstan 1.5 - 2.0 detik biar serba instan & gak kena delay 12 detik
+        time.sleep(2.0)
             
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
