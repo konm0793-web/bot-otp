@@ -76,23 +76,8 @@ def _log(tag, msg, color=Fore.CYAN):
     icon  = _LOG_ICONS.get(tag, "•")
     ts    = datetime.now().strftime("%H:%M:%S")
     label = f"{icon} {tag:<9}"
-    print(color + f"  {ts}  {label}  {msg}" + Style.RESET_ALL, flush=True)
+    print(color + f" {ts} {label} {msg}" + Style.RESET_ALL, flush=True)
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# WORKER POOL  (proxy fallback jika kena rate-limit)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-WORKER_POOL = [
-    "https://plain-butterfly-d9e9.kicenivas.workers.dev",
-    "https://ivasmunchen.serverprivate1.web.id",
-    "https://ivasmsbykicenv2.kikixrakaofficial.biz.id",
-    "https://ivasbykiven.alwayskixyzshop.web.id",
-]
-
-_worker_lock          = threading.Lock()
-_active_worker_idx    = 0
-_worker_limited_until = {}
-_last_log_limit_time  = 0
-WORKER_LIMIT_COOLDOWN = 900   # 15 menit
 class RateLimiter:
     def __init__(self, max_calls: int, period: float):
         self.max_calls = max_calls
@@ -112,7 +97,23 @@ class RateLimiter:
                 self.calls = [t for t in self.calls if now - t < self.period]
             self.calls.append(now)
 
-ivas_limiter: RateLimiter(max_calls=2, period=1.0)
+ivas_limiter = RateLimiter(max_calls=2, period=1.0)
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# WORKER POOL  (proxy fallback jika kena rate-limit)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WORKER_POOL = [
+    "https://plain-butterfly-d9e9.kicenivas.workers.dev",
+    "https://ivasmunchen.serverprivate1.web.id",
+    "https://ivasmsbykicenv2.kikixrakaofficial.biz.id",
+    "https://ivasbykiven.alwayskixyzshop.web.id",
+]
+
+_worker_lock          = threading.Lock()
+_active_worker_idx    = 0
+_worker_limited_until = {}
+_last_log_limit_time  = 0
+WORKER_LIMIT_COOLDOWN = 900   # 15 menit
 
 def get_base():
     with _worker_lock:
