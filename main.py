@@ -498,6 +498,7 @@ def save_sent_cache_now(cache: set):
         _log("CACHE", f"save error: {e}", Fore.YELLOW)
 
 sent_cache = load_sent_cache()
+IS_INITIALIZING = True
 
 def cache_add(uid: str):
     global _cache_dirty, _last_cache_save
@@ -756,6 +757,7 @@ def tg_update_listener():
 _OTP_RE = re.compile(r"\b\d{3}[- ]?\d{3}\b")
 
 def poll_one(acc) -> bool:
+    global IS_INITIALIZING
     found  = False
     ranges = []
     try:
@@ -780,9 +782,15 @@ def poll_one(acc) -> bool:
             clean = re.sub(r"\s+", " ", sms.replace("<#>", "")).strip()
             uid   = hashlib.md5(f"{num}-{clean}".encode()).hexdigest()
 
+            # 1. Cek cache
             with _sent_cache_lock:
                 if uid in sent_cache:
                     continue
+
+            # 2. FILTER WARMUP RESTART (Anti-Nyampah ke Group)
+            if IS_INITIALIZING:
+                cache_add(uid)  # Simpan ke cache diam-diam
+                continue        # Skip, jangan kirim ke Telegram!
 
             matches = _OTP_RE.findall(sms)
             if not matches:
@@ -823,9 +831,15 @@ def poll_one(acc) -> bool:
                     found = True
             except Exception as e:
                 _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
-            time.sleep(0.5)
+            time.sleep(0.1)
+
+    # Matikan mode warmup setelah perulangan pertama selesai
+    if IS_INITIALIZING:
+        IS_INITIALIZING = False
+        _log("CONFIG", f"akun #{acc['idx']}: Warmup selesai, siap terima OTP baru!", Fore.CYAN)
 
     return found
+
     
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
