@@ -831,7 +831,7 @@ def poll_one(acc) -> bool:
                     found = True
             except Exception as e:
                 _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
-            time.sleep(0.2)
+            time.sleep(0.03)
 
     # Matikan mode warmup setelah perulangan pertama selesai
     if IS_INITIALIZING:
