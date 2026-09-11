@@ -815,7 +815,12 @@ def poll_one(acc) -> bool:
 
         return local_found
 
-    for rng in ranges:
+        # Filter & balik urutan: Ambil range 2026 aja dan cek dari yang paling baru
+    active_ranges = [rng for rng in ranges if "2026" in rng]
+    if not active_ranges:
+        active_ranges = ranges[-10:]
+
+    for rng in reversed(active_ranges):
         fallback_country, code = parse_range(rng)
         try:
             numbers = get_numbers(acc, rng)
@@ -832,6 +837,7 @@ def poll_one(acc) -> bool:
             except Exception as e:
                 _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
             time.sleep(0.03)
+            
 
     # Matikan mode warmup setelah perulangan pertama selesai
     if IS_INITIALIZING:
