@@ -825,7 +825,7 @@ def poll_one(acc) -> bool:
         if not numbers:
             continue
 
-        for n in numbers[:3]:
+        for n in reversed(numbers):
             try:
                 if process_number(rng, n, fallback_country, code):
                     found = True
