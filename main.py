@@ -761,7 +761,7 @@ def poll_one(acc) -> bool:
     found  = False
     ranges = []
     try:
-        ranges = get_ranges_cached(acc)
+        ranges = get_ranges(acc)
     except Exception as e:
         _log("RANGE", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
         return False
@@ -825,7 +825,7 @@ def poll_one(acc) -> bool:
         if not numbers:
             continue
 
-        for n in numbers:
+        for n in numbers[:3]:
             try:
                 if process_number(rng, n, fallback_country, code):
                     found = True
