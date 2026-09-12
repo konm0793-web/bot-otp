@@ -815,12 +815,7 @@ def poll_one(acc) -> bool:
 
         return local_found
 
-        # Filter & balik urutan: Ambil range 2026 aja dan cek dari yang paling baru
-    active_ranges = [rng for rng in ranges if "2026" in rng]
-    if not active_ranges:
-        active_ranges = ranges[-10:]
-
-    for rng in reversed(active_ranges):
+    for rng in reversed(ranges):
         fallback_country, code = parse_range(rng)
         try:
             numbers = get_numbers(acc, rng)
