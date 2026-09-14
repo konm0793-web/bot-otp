@@ -1,4 +1,5 @@
 import os
+import asyncio
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
@@ -9,6 +10,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 BOT_TOKEN = os.getenv("PANEL_BOT_TOKEN", "")
 
+# 1. Start Command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_keyboard = [["📞 Get Number"]]
     markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
@@ -18,6 +20,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(welcome_msg, parse_mode="HTML", reply_markup=markup)
 
+# 2. Tombol Get Number
 async def handle_get_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
     available_ranges = getattr(main, 'COUNTRIES', {})
     keyboard = []
@@ -31,6 +34,7 @@ async def handle_get_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(row) == 2:
             keyboard.append(row)
             row = []
+            
     if row:
         keyboard.append(row)
         
@@ -41,6 +45,7 @@ async def handle_get_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Select a Country / Range:", reply_markup=reply_markup)
 
+# 3. Handle Klik Tombol Negara (Non-blocking)
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -52,16 +57,27 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text(f"⏳ Sedang mengambil nomor <b>{info['name']}</b>...", parse_mode="HTML")
 
-        acc = main.get_active_account() if hasattr(main, 'get_active_account') else (main.accounts[0] if getattr(main, 'accounts', None) else None)
+        # Ambil akun session
+        acc = None
+        if hasattr(main, 'get_active_account'):
+            acc = main.get_active_account()
+        elif hasattr(main, 'accounts') and main.accounts:
+            acc = main.accounts[0]
+
         if not acc:
-            await query.edit_message_text("❌ Session IVAS tidak aktif.")
+            await query.edit_message_text("❌ Session IVAS belum aktif / mati.")
             return
 
         rng_param = info.get("rng", range_key)
-        numbers = main.get_numbers(acc, rng_param)
+
+        # Gunakan asyncio.to_thread agar tidak macet / freeze
+        try:
+            numbers = await asyncio.to_thread(main.get_numbers, acc, rng_param)
+        except Exception as e:
+            numbers = []
 
         if not numbers:
-            text = f"❌ Gagal/Stok Habis untuk <b>{info['name']}</b>."
+            text = f"❌ Stok Habis / Gagal mengambil nomor <b>{info['name']}</b>."
         else:
             num_list = "\n".join([f"➕{num}" for num in numbers])
             text = (
