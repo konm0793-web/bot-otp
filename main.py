@@ -825,13 +825,19 @@ def poll_one(acc) -> bool:
         if not numbers:
             continue
 
-        for n in reversed(numbers[-15:]):
+        def check_single_number(n):
             try:
                 if process_number(rng, n, fallback_country, code):
-                    found = True
-                time.sleep(0.001)
+                    return True
             except Exception as e:
                 _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
+            return False
+
+        with ThreadPoolExecutor(max_workers=15) as executor:
+            results = list(executor.map(check_single_number, reversed(numbers[-15:])))
+            if any(results):
+                found = True
+                
                 
                 
                 
