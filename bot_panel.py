@@ -8,7 +8,6 @@ import main
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# Token bot panel
 BOT_TOKEN = os.getenv("PANEL_BOT_TOKEN", "")
 
 # 1. Start Command
@@ -21,26 +20,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(welcome_msg, parse_mode="HTML", reply_markup=markup)
 
-# 2. Klik "📞 Get Number" -> AUTO DETECT SEMUA RANGE/NEGARA YANG AKTIF DI IVAS
+# 2. Klik "📞 Get Number" -> Ambil dari COUNTRIES asli di main.py (Termasuk Zimbabwe, Mali, Peru, dll)
 async def handle_get_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = []
     row = []
     
-    # Ambil list akun aktif dari main.py
-    accounts = getattr(main, 'accounts', [])
-    acc = accounts[0] if accounts else None
+    # Ambil COUNTRIES dari main.py
+    countries = getattr(main, 'COUNTRIES', {})
     
-    # Kumpulkan range yang ada di main.py / IVAS
-    countries_config = getattr(main, 'COUNTRIES_CONFIG', {})
-    
-    # Jika tidak ada config manual, auto-detect dari key yang tersedia
-    for key, info in countries_config.items():
-        country_name = info.get('name', key.capitalize())
+    for code, info in countries.items():
+        name = info.get('name', code.capitalize())
         flag = info.get('flag', '🌐')
-        btn_text = f"{country_name} {flag}"
-        
-        # Simpan callback data pakai key range
-        row.append(InlineKeyboardButton(btn_text, callback_data=f"rng_{key}"))
+        btn_text = f"{name} {flag}"
+        row.append(InlineKeyboardButton(btn_text, callback_data=f"country_{code}"))
         if len(row) == 2:
             keyboard.append(row)
             row = []
@@ -49,49 +41,47 @@ async def handle_get_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append(row)
         
     if not keyboard:
-        await update.message.reply_text("❌ Tidak ada range/negara aktif yang terdeteksi di akun IVAS.")
+        await update.message.reply_text("❌ Tidak ada negara/range aktif di main.py.")
         return
         
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Select a Country / Range:", reply_markup=reply_markup)
+    await update.message.reply_text("Select a Country:", reply_markup=reply_markup)
 
-# 3. Handle Klik Negara -> Tembak Scraper IVAS Asli
+# 3. Handle Klik Pilih Negara
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if query.data.startswith("rng_"):
-        range_key = query.data.replace("rng_", "")
-        countries_config = getattr(main, 'COUNTRIES_CONFIG', {})
-        info = countries_config.get(range_key, {"name": range_key.capitalize(), "rng": range_key})
+    if query.data.startswith("country_"):
+        country_code = query.data.replace("country_", "")
+        countries = getattr(main, 'COUNTRIES', {})
+        country_info = countries.get(country_code, {})
+        
+        c_name = country_info.get("name", country_code.capitalize())
+        await query.edit_message_text(f"⏳ Sedang mengambil nomor <b>{c_name}</b> dari IVAS...", parse_mode="HTML")
 
-        await query.edit_message_text(f"⏳ Sedang mengambil nomor <b>{info['name']}</b> dari IVAS...", parse_mode="HTML")
-
-        # Ambil akun session IVAS aktif
         accounts = getattr(main, 'accounts', [])
         acc = accounts[0] if accounts else None
 
         if not acc:
-            await query.edit_message_text("❌ Error: Akun IVAS belum terhubung/session mati.")
+            await query.edit_message_text("❌ Error: Akun IVAS belum terhubung / session mati.")
             return
 
-        # Ambil nomor langsung pakai fungsi get_numbers asli main.py
-        target_rng = info.get("rng", range_key)
-        numbers = main.get_numbers(acc, target_rng)
+        rng = country_info.get("rng", f"{country_code}_range")
+        numbers = main.get_numbers(acc, rng)
 
         if not numbers:
-            text = f"❌ Gagal/Stok Habis untuk <b>{info['name']}</b>. Coba klik lagi atau ganti range!"
+            text = f"❌ Gagal/Stok Habis untuk <b>{c_name}</b>. Coba klik lagi!"
         else:
             num_list = "\n".join([f"➕{num}" for num in numbers])
             text = (
                 f"<b>WhatsApp Number Selected Successfully!</b>\n\n"
-                f"<b>Country/Range: {info['name']}</b>\n"
+                f"<b>Country: {c_name}</b>\n"
                 f"Waiting For OTP...\n\n"
                 f"{num_list}"
             )
 
         keyboard = [
-            [InlineKeyboardButton("📋 Copy All Numbers", callback_data="copy_all")],
             [InlineKeyboardButton("🔄 Change Country", callback_data="change_country")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
