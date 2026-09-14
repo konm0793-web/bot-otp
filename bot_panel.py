@@ -22,27 +22,49 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # 2. Tombol Get Number
 async def handle_get_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    available_ranges = getattr(main, 'COUNTRIES', {})
+    # 1. Coba ambil dari fungsi/variabel dinamis IVAS yang ada di main.py
+    available_ranges = {}
+    
+    if hasattr(main, 'get_available_ranges'):
+        # Jika main.py punya fungsi pembaca range aktif dari IVAS
+        available_ranges = main.get_available_ranges()
+    elif hasattr(main, 'COUNTRIES'):
+        available_ranges = main.COUNTRIES
+    elif hasattr(main, 'RANGES'):
+        available_ranges = main.RANGES
+    
     keyboard = []
     row = []
     
-    for key, info in available_ranges.items():
-        c_name = info.get('name', key.upper())
-        flag = info.get('flag', '🌐')
-        btn_text = f"{c_name} {flag}"
-        row.append(InlineKeyboardButton(btn_text, callback_data=f"rng_{key}"))
-        if len(row) == 2:
-            keyboard.append(row)
-            row = []
+    # 2. Susun tombol berdasarkan data dinamis IVAS
+    if isinstance(available_ranges, dict):
+        for key, info in available_ranges.items():
+            name = info.get('name', str(key).upper()) if isinstance(info, dict) else str(info).upper()
+            flag = info.get('flag', '🌐') if isinstance(info, dict) else '🌐'
+            btn_text = f"{name} {flag}"
+            row.append(InlineKeyboardButton(btn_text, callback_data=f"rng_{key}"))
+            if len(row) == 2:
+                keyboard.append(row)
+                row = []
+    elif isinstance(available_ranges, (list, tuple)):
+        for item in available_ranges:
+            btn_text = f"{str(item).upper()} 🌐"
+            row.append(InlineKeyboardButton(btn_text, callback_data=f"rng_{item}"))
+            if len(row) == 2:
+                keyboard.append(row)
+                row = []
+
     if row:
         keyboard.append(row)
-        
+
+    # 3. Kalau belum ada range aktif di IVAS saat itu
     if not keyboard:
-        await update.message.reply_text("❌ Tidak ada range/negara aktif di main.py.")
+        await update.message.reply_text("❌ Tidak ada range/negara yang sedang aktif/high di IVAS saat ini.")
         return
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Select a Country / Range:", reply_markup=reply_markup)
+    
 
 # 3. Handle Klik Tombol Negara
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
