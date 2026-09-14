@@ -34,7 +34,6 @@ async def handle_get_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(row) == 2:
             keyboard.append(row)
             row = []
-            
     if row:
         keyboard.append(row)
         
@@ -45,7 +44,7 @@ async def handle_get_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Select a Country / Range:", reply_markup=reply_markup)
 
-# 3. Handle Klik Tombol Negara (Non-blocking)
+# 3. Handle Klik Tombol Negara
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -57,7 +56,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text(f"⏳ Sedang mengambil nomor <b>{info['name']}</b>...", parse_mode="HTML")
 
-        # Ambil akun session
         acc = None
         if hasattr(main, 'get_active_account'):
             acc = main.get_active_account()
@@ -70,7 +68,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         rng_param = info.get("rng", range_key)
 
-        # Gunakan asyncio.to_thread agar tidak macet / freeze
         try:
             numbers = await asyncio.to_thread(main.get_numbers, acc, rng_param)
         except Exception as e:
@@ -104,4 +101,3 @@ def start_bot_panel():
     app.add_handler(CallbackQueryHandler(button_callback))
     print("Bot Panel is running...")
     app.run_polling()
-    
