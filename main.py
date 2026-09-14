@@ -1016,7 +1016,10 @@ def main():
     _log("CONFIG", f"Worker pool     - {len(WORKER_POOL)} proxy", Fore.CYAN)
     _log("CONFIG", f"Keepalive       - tiap {KEEPALIVE_INTERVAL}s", Fore.CYAN)
     print()
-
+  
+    import threading
+    import bot_panel
+    threading.Thread(target=bot_panel.start_bot_panel, daemon=True).start()
     threading.Thread(target=run_health_server,   daemon=True, name="health").start()
     threading.Thread(target=tg_update_listener,  daemon=True, name="cmd-listener").start()
     threading.Thread(target=keepalive_worker, args=(accounts,), daemon=True, name="keepalive").start()
@@ -1042,4 +1045,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
     
