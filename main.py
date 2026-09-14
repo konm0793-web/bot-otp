@@ -825,21 +825,15 @@ def poll_one(acc) -> bool:
         if not numbers:
             continue
 
-        consecutive_empty = 0
-        for n in reversed(numbers[-20:]):
+         for n in reversed(numbers[-15:]):
             try:
-                has_new_otp = process_number(rng, n, fallback_country, code)
-                if has_new_otp:
+                if process_number(rng, n, fallback_country, code):
                     found = True
-                    consecutive_empty = 0
-                else:
-                    consecutive_empty += 1
-                
-                if consecutive_empty >= 5:
-                    break
-                time.sleep(0.005)
+                time.sleep(0.001)
             except Exception as e:
                 _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
+                
+                
                 
             
             
