@@ -100,4 +100,7 @@ def start_bot_panel():
     app.add_handler(MessageHandler(filters.Regex("^📞 Get Number$"), handle_get_number))
     app.add_handler(CallbackQueryHandler(button_callback))
     print("Bot Panel is running...")
-    app.run_polling()
+    
+    # Tambahkan stop_signals=None supaya bisa jalan di background thread!
+    app.run_polling(stop_signals=None)
+    
