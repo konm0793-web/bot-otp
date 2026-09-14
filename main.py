@@ -981,10 +981,10 @@ signal.signal(signal.SIGINT,  _shutdown)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def main():
     print(Fore.CYAN + Style.BRIGHT, end="")
-    print("  ╔══════════════════════════════════════╗")
-    print("  ║   🕷  SPIDERMAT OTP BOT              ║")
-    print("  ║        FORWARD MODE                  ║")
-    print("  ╚══════════════════════════════════════╝")
+    print("┌─────────────────────────────────────────┐")
+    print("│         🕷️  SPIDERMAT OTP BOT           │")
+    print("│              FORWARD MODE               │")
+    print("└─────────────────────────────────────────┘")
     print(Style.RESET_ALL)
 
     if not BOT_TOKEN:
@@ -1007,26 +1007,26 @@ def main():
             "csrf_token": "",
         }
         accounts.append(acc)
-        _log("COOKIE", f"Akun #{idx} — {len(ck)} cookie dimuat", Fore.GREEN)
+        _log("COOKIE", f"Akun #{idx} - {len(ck)} cookie dimuat", Fore.GREEN)
 
     print()
-    _log("CONFIG", f"Default target  →  {DEFAULT_TARGET}",         Fore.CYAN)
-    _log("CONFIG", f"Total target    →  {len(list_groups())} grup", Fore.CYAN)
-    _log("CONFIG", f"Channel link    →  {CHANNEL_LINK}",           Fore.CYAN)
-    _log("CONFIG", f"Worker pool     →  {len(WORKER_POOL)} proxy",  Fore.CYAN)
-    _log("CONFIG", f"Keepalive       →  tiap {KEEPALIVE_INTERVAL}s", Fore.CYAN)
+    _log("CONFIG", f"Default target  - {DEFAULT_TARGET}",      Fore.CYAN)
+    _log("CONFIG", f"Total target    - {len(list_groups())} grup", Fore.CYAN)
+    _log("CONFIG", f"Channel link    - {CHANNEL_LINK}",       Fore.CYAN)
+    _log("CONFIG", f"Worker pool     - {len(WORKER_POOL)} proxy", Fore.CYAN)
+    _log("CONFIG", f"Keepalive       - tiap {KEEPALIVE_INTERVAL}s", Fore.CYAN)
     print()
 
-    threading.Thread(target=run_health_server,                     daemon=True, name="health").start()
-    threading.Thread(target=tg_update_listener,                    daemon=True, name="cmd-listener").start()
-    threading.Thread(target=keepalive_worker, args=(accounts,),    daemon=True, name="keepalive").start()
+    threading.Thread(target=run_health_server,   daemon=True, name="health").start()
+    threading.Thread(target=tg_update_listener,  daemon=True, name="cmd-listener").start()
+    threading.Thread(target=keepalive_worker, args=(accounts,), daemon=True, name="keepalive").start()
 
     for acc in accounts:
         threading.Thread(
             target=account_worker, args=(acc,),
-            daemon=True, name=f"poll-{acc['idx']}",
+            daemon=True, name=f"poll-acc{acc['idx']}",
         ).start()
-        _log("THREAD+", f"Akun #{acc['idx']} — polling aktif", Fore.GREEN)
+        _log("THREAD+", f"Akun #{acc['idx']} - polling aktif", Fore.GREEN)
 
     print()
     _log("CONFIG", "Bot berjalan. Ketik /addbot di grup untuk mendaftarkan.", Fore.CYAN)
@@ -1037,8 +1037,9 @@ def main():
             with _sent_cache_lock:
                 save_sent_cache_now(sent_cache)
             _last_cache_save = time.time()
-            _cache_dirty     = False
+            _cache_dirty = False
         time.sleep(5)
 
-main()
-                
+if __name__ == "__main__":
+    main()
+    
