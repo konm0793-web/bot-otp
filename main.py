@@ -1072,9 +1072,17 @@ def get_all_numbers_auto(acc):
     return list(set(all_numbers)) # Return semua nomor tanpa duplikat
     
 def get_active_account():
+    # 1. Cek kalau variabelnya 'accounts'
     if 'accounts' in globals() and accounts:
         return accounts[0]
+    # 2. Cek kalau variabelnya 'WORKER_POOL'
+    elif 'WORKER_POOL' in globals() and WORKER_POOL:
+        return WORKER_POOL[0]
+    # 3. Cek kalau variabelnya 'ACCOUNTS'
+    elif 'ACCOUNTS' in globals() and ACCOUNTS:
+        return ACCOUNTS[0]
     return None
+    
     
 if __name__ == "__main__":
     main()
