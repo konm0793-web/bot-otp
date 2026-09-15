@@ -4,4 +4,3 @@ phonenumbers
 colorama
 requests
 curl_cffi
-python-telegram-bot
