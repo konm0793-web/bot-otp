@@ -12,72 +12,33 @@ BOT_TOKEN = os.getenv("PANEL_BOT_TOKEN", "")
 
 # 1. Start Command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reply_keyboard = [["📞 Get Number"]]
+    reply_keyboard = [["📞 Get Number"], ["Ambil Nomor"]]
     markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
     welcome_msg = (
-        "<b>Verified! Welcome to OTP Service</b>\n\n"
-        "Klik tombol <b>📞 Get Number</b> di bawah untuk mengambil nomor."
+        "<b> Verified! Welcome to OTP Service</b>\n\n"
+        "Ketik <b>Ambil Nomor</b> atau klik tombol di bawah untuk mulai."
     )
     await update.message.reply_text(welcome_msg, parse_mode="HTML", reply_markup=markup)
 
-# 2. Tombol Get Number
+# 2. Menu Pilih Negara / Service
 async def handle_get_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 1. Coba ambil dari fungsi/variabel dinamis IVAS yang ada di main.py
-    available_ranges = {}
-    
-    if hasattr(main, 'get_available_ranges'):
-        # Jika main.py punya fungsi pembaca range aktif dari IVAS
-        available_ranges = main.get_available_ranges()
-    elif hasattr(main, 'COUNTRIES'):
-        available_ranges = main.COUNTRIES
-    elif hasattr(main, 'RANGES'):
-        available_ranges = main.RANGES
-    
-    keyboard = []
-    row = []
-    
-    # 2. Susun tombol berdasarkan data dinamis IVAS
-    if isinstance(available_ranges, dict):
-        for key, info in available_ranges.items():
-            name = info.get('name', str(key).upper()) if isinstance(info, dict) else str(info).upper()
-            flag = info.get('flag', '🌐') if isinstance(info, dict) else '🌐'
-            btn_text = f"{name} {flag}"
-            row.append(InlineKeyboardButton(btn_text, callback_data=f"rng_{key}"))
-            if len(row) == 2:
-                keyboard.append(row)
-                row = []
-    elif isinstance(available_ranges, (list, tuple)):
-        for item in available_ranges:
-            btn_text = f"{str(item).upper()} 🌐"
-            row.append(InlineKeyboardButton(btn_text, callback_data=f"rng_{item}"))
-            if len(row) == 2:
-                keyboard.append(row)
-                row = []
-
-    if row:
-        keyboard.append(row)
-
-    # 3. Kalau belum ada range aktif di IVAS saat itu
-    if not keyboard:
-        await update.message.reply_text("❌ Tidak ada range/negara yang sedang aktif/high di IVAS saat ini.")
-        return
-
+    keyboard = [
+        [InlineKeyboardButton("🇿🇼 Zimbabwe (Auto All Prefix)", callback_data="get_zw_auto")],
+        [InlineKeyboardButton("🔄 Refresh Session", callback_data="refresh_session")]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Select a Country / Range:", reply_markup=reply_markup)
-    
+    msg = update.message if update.message else update.callback_query.message
+    await msg.reply_text("<b>Pilih Layanan / Negara:</b>", parse_mode="HTML", reply_markup=reply_markup)
 
-# 3. Handle Klik Tombol Negara
+# 3. Callback Handler Utama (Narik Nomor & Tampilan UI Tombol)
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if query.data.startswith("rng_"):
-        range_key = query.data.replace("rng_", "")
-        available_ranges = getattr(main, 'COUNTRIES', {})
-        info = available_ranges.get(range_key, {"name": range_key.upper(), "rng": range_key})
+    if query.data == "get_zw_auto":
+        await query.edit_message_text("⏳ <b>Sedang menarik semua prefix & nomor dari IVAS...</b>", parse_mode="HTML")
 
-        await query.edit_message_text(f"⏳ Sedang mengambil nomor <b>{info['name']}</b>...", parse_mode="HTML")
-
+        # Ambil akun session IVAS yang aktif dari main.py
         acc = None
         if hasattr(main, 'get_active_account'):
             acc = main.get_active_account()
@@ -85,44 +46,63 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             acc = main.accounts[0]
 
         if not acc:
-            await query.edit_message_text("❌ Session IVAS belum aktif / mati.")
+            await query.edit_message_text("❌ <b>Session IVAS mati / belum terhubung.</b>", parse_mode="HTML")
             return
 
-        rng_param = info.get("rng", range_key)
-
+        # Panggil fungsi auto-fetch milik main.py
         try:
-            numbers = await asyncio.to_thread(main.get_numbers, acc, rng_param)
+            numbers = await asyncio.to_thread(main.get_all_numbers_auto, acc)
         except Exception as e:
+            logging.error(f"Error fetching numbers: {e}")
             numbers = []
 
         if not numbers:
-            text = f"❌ Stok Habis / Gagal mengambil nomor <b>{info['name']}</b>."
-        else:
-            num_list = "\n".join([f"➕{num}" for num in numbers])
-            text = (
-                f"<b>WhatsApp Number Selected Successfully!</b>\n\n"
-                f"<b>Country/Range: {info['name']}</b>\n"
-                f"Waiting For OTP...\n\n"
-                f"{num_list}"
-            )
+            keyboard = [[InlineKeyboardButton("🔙 Kembali ke Menu", callback_data="change_country")]]
+            await query.edit_message_text("❌ <b>Stok Habis / Gagal mengambil nomor dari IVAS.</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+            return
 
-        keyboard = [[InlineKeyboardButton("🔄 Change Country", callback_data="change_country")]]
+        # Batasi tampilan max 20 nomor per UI pesan biar gak melebihi limit tombol Telegram
+        display_numbers = numbers[:20]
+
+        # Susun tombol-tombol nomor (mirip UI screenshot lu)
+        keyboard = []
+        for num in display_numbers:
+            formatted_num = f"+{num}" if not str(num).startswith("+") else str(num)
+            keyboard.append([InlineKeyboardButton(f"📋 {formatted_num}", callback_data=f"copy_{num}")])
+
+        # Navigasi tombol bawah
+        keyboard.append([
+            InlineKeyboardButton("🔄 Ambil Ulang", callback_data="get_zw_auto"),
+            InlineKeyboardButton("🌐 Ganti Negara", callback_data="change_country")
+        ])
+        keyboard.append([InlineKeyboardButton("🔍 Auto Checker On", callback_data="checker_toggle")])
+
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(text, parse_mode="HTML", reply_markup=reply_markup)
+        header_text = (
+            f"✅ <b>WhatsApp 🇿🇼 Zimbabwe</b>\n"
+            f"<code>{len(numbers)} nomor berhasil diambil secara otomatis.</code>"
+        )
+        await query.edit_message_text(header_text, parse_mode="HTML", reply_markup=reply_markup)
+
+    elif query.data.startswith("copy_"):
+        num_copied = query.data.replace("copy_", "")
+        await query.answer(f"Nomor disalin: +{num_copied}", show_alert=True)
 
     elif query.data == "change_country":
-        await handle_get_number(query, context)
+        await handle_get_number(update, context)
 
+# 4. Runner Bot Panel
 def start_bot_panel():
     if not BOT_TOKEN:
-        print("PANEL_BOT_TOKEN belum diset di Environment Variable!")
+        print("PANEL_BOT_TOKEN belum diset di environment variable!")
         return
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.Regex("^📞 Get Number$"), handle_get_number))
+    app.add_handler(MessageHandler(filters.Regex("(?i)^(📞 Get Number|Ambil Nomor)$"), handle_get_number))
     app.add_handler(CallbackQueryHandler(button_callback))
     print("Bot Panel is running...")
-    
-    # Tambahkan stop_signals=None supaya bisa jalan di background thread!
     app.run_polling(stop_signals=None)
+
+if __name__ == "__main__":
+    start_bot_panel()
     
