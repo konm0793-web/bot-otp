@@ -1070,6 +1070,11 @@ def get_all_numbers_auto(acc):
         all_numbers.extend(nums)
         
     return list(set(all_numbers)) # Return semua nomor tanpa duplikat
-
+    
+def get_active_account():
+    if 'accounts' in globals() and accounts:
+        return accounts[0]
+    return None
+    
 if __name__ == "__main__":
     main()
