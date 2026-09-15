@@ -1043,7 +1043,33 @@ def main():
             _cache_dirty = False
         time.sleep(5)
 
+# ==========================================
+# FUNGSI AUTO-FETCH PREFIX & NOMOR IVAS
+# ==========================================
+
+def get_available_ranges(acc):
+    base = get_base()
+    # Buka halaman getsms IVAS buat ngambil daftar range/prefix yang ada
+    r = acc["session"].get(f"{base}/portal/sms/received/getsms", headers=_recv_headers(base))
+    soup = BeautifulSoup(r.text, 'html.parser')
+    
+    select_tag = soup.find('select', {'name': 'range'})
+    if not select_tag:
+        return []
+    
+    # Ambil semua prefix yang ada di option dropdown (misal 263773, 263774, dll)[span_0](start_span)[span_0](end_span)
+    return [opt['value'] for opt in select_tag.find_all('option') if opt.get('value')]
+
+def get_all_numbers_auto(acc):
+    ranges = get_available_ranges(acc)
+    all_numbers = []
+    
+    # Loop narik nomor pake fungsi get_numbers milik lu
+    for rng in ranges:
+        nums = get_numbers(acc, rng)
+        all_numbers.extend(nums)
+        
+    return list(set(all_numbers)) # Return semua nomor tanpa duplikat
+
 if __name__ == "__main__":
     main()
-
-    
