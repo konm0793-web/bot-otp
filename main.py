@@ -981,10 +981,10 @@ signal.signal(signal.SIGINT,  _shutdown)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 def main():
     print(Fore.CYAN + Style.BRIGHT, end="")
-    print("┌─────────────────────────────────────────┐")
-    print("│         🕷️  SPIDERMAT OTP BOT           │")
-    print("│              FORWARD MODE               │")
-    print("└─────────────────────────────────────────┘")
+    print("  ╔══════════════════════════════════════╗")
+    print("  ║   🕷  SPIDERMAT OTP BOT              ║")
+    print("  ║        FORWARD MODE                  ║")
+    print("  ╚══════════════════════════════════════╝")
     print(Style.RESET_ALL)
 
     if not BOT_TOKEN:
@@ -1007,29 +1007,26 @@ def main():
             "csrf_token": "",
         }
         accounts.append(acc)
-        _log("COOKIE", f"Akun #{idx} - {len(ck)} cookie dimuat", Fore.GREEN)
+        _log("COOKIE", f"Akun #{idx} — {len(ck)} cookie dimuat", Fore.GREEN)
 
     print()
-    _log("CONFIG", f"Default target  - {DEFAULT_TARGET}",      Fore.CYAN)
-    _log("CONFIG", f"Total target    - {len(list_groups())} grup", Fore.CYAN)
-    _log("CONFIG", f"Channel link    - {CHANNEL_LINK}",       Fore.CYAN)
-    _log("CONFIG", f"Worker pool     - {len(WORKER_POOL)} proxy", Fore.CYAN)
-    _log("CONFIG", f"Keepalive       - tiap {KEEPALIVE_INTERVAL}s", Fore.CYAN)
+    _log("CONFIG", f"Default target  →  {DEFAULT_TARGET}",         Fore.CYAN)
+    _log("CONFIG", f"Total target    →  {len(list_groups())} grup", Fore.CYAN)
+    _log("CONFIG", f"Channel link    →  {CHANNEL_LINK}",           Fore.CYAN)
+    _log("CONFIG", f"Worker pool     →  {len(WORKER_POOL)} proxy",  Fore.CYAN)
+    _log("CONFIG", f"Keepalive       →  tiap {KEEPALIVE_INTERVAL}s", Fore.CYAN)
     print()
-  
-    import threading
-    import bot_panel
-    threading.Thread(target=bot_panel.start_bot_panel, daemon=True).start()
-    threading.Thread(target=run_health_server,   daemon=True, name="health").start()
-    threading.Thread(target=tg_update_listener,  daemon=True, name="cmd-listener").start()
-    threading.Thread(target=keepalive_worker, args=(accounts,), daemon=True, name="keepalive").start()
+
+    threading.Thread(target=run_health_server,                     daemon=True, name="health").start()
+    threading.Thread(target=tg_update_listener,                    daemon=True, name="cmd-listener").start()
+    threading.Thread(target=keepalive_worker, args=(accounts,),    daemon=True, name="keepalive").start()
 
     for acc in accounts:
         threading.Thread(
             target=account_worker, args=(acc,),
-            daemon=True, name=f"poll-acc{acc['idx']}",
+            daemon=True, name=f"poll-{acc['idx']}",
         ).start()
-        _log("THREAD+", f"Akun #{acc['idx']} - polling aktif", Fore.GREEN)
+        _log("THREAD+", f"Akun #{acc['idx']} — polling aktif", Fore.GREEN)
 
     print()
     _log("CONFIG", "Bot berjalan. Ketik /addbot di grup untuk mendaftarkan.", Fore.CYAN)
@@ -1040,54 +1037,8 @@ def main():
             with _sent_cache_lock:
                 save_sent_cache_now(sent_cache)
             _last_cache_save = time.time()
-            _cache_dirty = False
+            _cache_dirty     = False
         time.sleep(5)
 
-# ==========================================
-# FUNGSI AUTO-FETCH PREFIX & NOMOR IVAS
-# ==========================================
-
-def get_available_ranges(acc):
-    base = get_base()
-    # Buka halaman getsms IVAS buat ngambil daftar range/prefix yang ada
-    r = acc["session"].get(f"{base}/portal/sms/received/getsms", headers=_recv_headers(base))
-    soup = BeautifulSoup(r.text, 'html.parser')
-    
-    select_tag = soup.find('select', {'name': 'range'})
-    if not select_tag:
-        return []
-    
-    # Ambil semua prefix yang ada di option dropdown (misal 263773, 263774, dll)[span_0](start_span)[span_0](end_span)
-    return [opt['value'] for opt in select_tag.find_all('option') if opt.get('value')]
-
-def get_all_numbers_auto(acc):
-    ranges = get_available_ranges(acc)
-    all_numbers = []
-    
-    # Loop narik nomor pake fungsi get_numbers milik lu
-    for rng in ranges:
-        nums = get_numbers(acc, rng)
-        all_numbers.extend(nums)
-        
-    return list(set(all_numbers)) # Return semua nomor tanpa duplikat
-    
-
-def get_active_account():
-    # 1. Cek kalau accounts berisi list of dict
-    if 'accounts' in globals() and accounts:
-        acc = accounts[0]
-        if isinstance(acc, dict):
-            return acc
-            
-    # 2. Cek kalau WORKER_POOL berisi list of dict
-    if 'WORKER_POOL' in globals() and WORKER_POOL:
-        acc = WORKER_POOL[0]
-        if isinstance(acc, dict):
-            return acc
-
-    return None
-    
-    
-    
-if __name__ == "__main__":
-    main()
+main()
+                
