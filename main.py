@@ -758,15 +758,15 @@ _OTP_RE = re.compile(r"\b\d{3}[- ]?\d{3}\b")
 
 def poll_one(acc) -> bool:
     global IS_INITIALIZING
-    found  = False
-    ranges = []
+    found = False
     try:
         ranges = get_ranges(acc)
     except Exception as e:
         _log("RANGE", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
         return False
 
-    def process_number(rng, num, fallback_country, code):
+    def process_number_safe(rng, num, fallback_country, code):
+        """Wrapper aman untuk nge-handle satu nomor secara paralel"""
         full_num = normalize_number(num, code)
         if not full_num.isdigit():
             return False
@@ -774,7 +774,7 @@ def poll_one(acc) -> bool:
         try:
             sms_list = get_sms(acc, rng, num)
         except Exception as e:
-            _log("SMS", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
+            # Silent atau log ringan biar thread nggak berisik kalau timeout dikit
             return False
 
         local_found = False
@@ -789,8 +789,8 @@ def poll_one(acc) -> bool:
 
             # 2. FILTER WARMUP RESTART (Anti-Nyampah ke Group)
             if IS_INITIALIZING:
-                cache_add(uid)  # Simpan ke cache diam-diam
-                continue        # Skip, jangan kirim ke Telegram!
+                cache_add(uid)
+                continue
 
             matches = _OTP_RE.findall(sms)
             if not matches:
@@ -815,6 +815,8 @@ def poll_one(acc) -> bool:
 
         return local_found
 
+    # Kumpulin semua task pengecekan nomor dari semua range sekaligus
+    all_tasks = []
     for rng in reversed(ranges):
         fallback_country, code = parse_range(rng)
         try:
@@ -822,28 +824,35 @@ def poll_one(acc) -> bool:
         except Exception as e:
             _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
             continue
+        
         if not numbers:
             continue
+            
+        # Masukin semua nomor ke list task (tanpa dibatasi 15 belakang doang kalau mau optimal, 
+        # tapi kalau mau dibatasin biar enteng, bisa disesuaikan)
+        for n in numbers:
+            all_tasks.append((rng, n, fallback_country, code))
 
-        def check_single_number(n):
+    if not all_tasks:
+        if IS_INITIALIZING:
+            IS_INITIALIZING = False
+            _log("CONFIG", f"akun #{acc['idx']}: Warmup selesai, siap terima OTP baru!", Fore.CYAN)
+        return False
+
+    # Eksekusi pakai ThreadPoolExecutor secara paralel masif (Non-blocking)
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        futures = [
+            executor.submit(process_number_safe, rng, n, fc, cd) 
+            for rng, n, fc, cd in all_tasks
+        ]
+        
+        # Cek hasil dari semua thread yang jalan barengan
+        for future in futures:
             try:
-                if process_number(rng, n, fallback_country, code):
-                    return True
-            except Exception as e:
-                _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
-            return False
-
-        with ThreadPoolExecutor(max_workers=15) as executor:
-            results = list(executor.map(check_single_number, reversed(numbers[-15:])))
-            if any(results):
-                found = True
-                
-                
-                
-                
-                
-            
-            
+                if future.result():
+                    found = True
+            except Exception:
+                pass
 
     # Matikan mode warmup setelah perulangan pertama selesai
     if IS_INITIALIZING:
@@ -852,7 +861,6 @@ def poll_one(acc) -> bool:
 
     return found
     
-
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ACCOUNT WORKER
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
