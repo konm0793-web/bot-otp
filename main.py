@@ -112,7 +112,7 @@ class RateLimiter:
                 self.calls = [t for t in self.calls if now - t < self.period]
             self.calls.append(now)
 
-ivas_limiter = RateLimiter(max_calls=5, period=2.0)
+ivas_limiter = RateLimiter(max_calls=2, period=3.0)  # Aman dari blokir WAF IVAS
 
 def get_base():
     with _worker_lock:
@@ -758,7 +758,8 @@ _OTP_RE = re.compile(r"\b\d{3}[- ]?\d{3}\b")
 
 def poll_one(acc) -> bool:
     global IS_INITIALIZING
-    found = False
+    found  = False
+    ranges = []
     try:
         ranges = get_ranges(acc)
     except Exception as e:
@@ -773,9 +774,9 @@ def poll_one(acc) -> bool:
         try:
             sms_list = get_sms(acc, rng, num)
         except Exception as e:
+            _log("SMS", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
             return False
 
-        local_found = false_flag = False # placeholder logic
         local_found = False
         for sms in sms_list:
             clean = re.sub(r"\s+", " ", sms.replace("<#>", "")).strip()
@@ -788,8 +789,8 @@ def poll_one(acc) -> bool:
 
             # 2. FILTER WARMUP RESTART (Anti-Nyampah ke Group)
             if IS_INITIALIZING:
-                cache_add(uid)
-                continue
+                cache_add(uid)  # Simpan ke cache diam-diam
+                continue        # Skip, jangan kirim ke Telegram!
 
             matches = _OTP_RE.findall(sms)
             if not matches:
@@ -814,9 +815,6 @@ def poll_one(acc) -> bool:
 
         return local_found
 
-    # Smart Polling: Kumpulkan task dari range, utamakan range terbaru 
-    # dan ambil 15 nomor terakhir di tiap range agar tidak overload tapi tetap aman
-    all_tasks = []
     for rng in reversed(ranges):
         fallback_country, code = parse_range(rng)
         try:
@@ -826,32 +824,26 @@ def poll_one(acc) -> bool:
             continue
         if not numbers:
             continue
-        
-        # Ambil 15 nomor terakhir yang paling potensial ada aktivitas gacha
-        active_numbers = numbers[-15:]
-        for n in active_numbers:
-            all_tasks.append((rng, n, fallback_country, code))
 
-    if not all_tasks:
-        if IS_INITIALIZING:
-            IS_INITIALIZING = False
-            _log("CONFIG", f"akun #{acc['idx']}: Warmup selesai, siap terima OTP baru!", Fore.CYAN)
-        return False
-
-    # Gunakan max_workers yang pas (12 worker) agar request berjalan paralel 
-    # tanpa memicu pembatasan (rate-limit) dari server penyedia SMS
-    with ThreadPoolExecutor(max_workers=12) as executor:
-        futures = [
-            executor.submit(process_number, rng, n, fc, cd) 
-            for rng, n, fc, cd in all_tasks
-        ]
-        
-        for future in futures:
+        def check_single_number(n):
             try:
-                if future.result():
-                    found = True
-            except Exception:
-                pass
+                if process_number(rng, n, fallback_country, code):
+                    return True
+            except Exception as e:
+                _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
+            return False
+
+        with ThreadPoolExecutor(max_workers=15) as executor:
+            results = list(executor.map(check_single_number, reversed(numbers[-15:])))
+            if any(results):
+                found = True
+                
+                
+                
+                
+                
+            
+            
 
     # Matikan mode warmup setelah perulangan pertama selesai
     if IS_INITIALIZING:
@@ -860,6 +852,7 @@ def poll_one(acc) -> bool:
 
     return found
     
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ACCOUNT WORKER
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
