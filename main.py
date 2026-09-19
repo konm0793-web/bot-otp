@@ -775,6 +775,7 @@ def poll_one(acc) -> bool:
         except Exception as e:
             return False
 
+        local_found = false_flag = False # placeholder logic
         local_found = False
         for sms in sms_list:
             clean = re.sub(r"\s+", " ", sms.replace("<#>", "")).strip()
@@ -796,7 +797,7 @@ def poll_one(acc) -> bool:
 
             otp                       = re.sub(r"[^0-9]", "", matches[0])
             svc                       = detect_service(sms)
-            country, flag, region_code = detect_country_and_flag(full_num, fallback_content=fallback_country) if 'fallback_content' in globals() else detect_country_and_flag(full_num, fallback_country)
+            country, flag, region_code = detect_country_and_flag(full_num, fallback_country)
             masked                    = mask_phone(full_num)
 
             msg = build_otp_message(otp, svc, flag, country, region_code, masked, clean)
@@ -813,7 +814,8 @@ def poll_one(acc) -> bool:
 
         return local_found
 
-    # Kumpulkan SEMUA nomor dari SEMUA range agar tidak ada satupun yang ke-skip (Aman untuk High Traffic)
+    # Smart Polling: Kumpulkan task dari range, utamakan range terbaru 
+    # dan ambil 15 nomor terakhir di tiap range agar tidak overload tapi tetap aman
     all_tasks = []
     for rng in reversed(ranges):
         fallback_country, code = parse_range(rng)
@@ -825,8 +827,9 @@ def poll_one(acc) -> bool:
         if not numbers:
             continue
         
-        # Masukkan SEMUA nomor tanpa terkecuali
-        for n in numbers:
+        # Ambil 15 nomor terakhir yang paling potensial ada aktivitas gacha
+        active_numbers = numbers[-15:]
+        for n in active_numbers:
             all_tasks.append((rng, n, fallback_country, code))
 
     if not all_tasks:
@@ -835,9 +838,9 @@ def poll_one(acc) -> bool:
             _log("CONFIG", f"akun #{acc['idx']}: Warmup selesai, siap terima OTP baru!", Fore.CYAN)
         return False
 
-    # Gunakan ThreadPoolExecutor dengan worker besar (max_workers=35) 
-    # agar puluhan nomor di-scan secara serentak (paralel masif) tanpa antre
-    with ThreadPoolExecutor(max_workers=35) as executor:
+    # Gunakan max_workers yang pas (12 worker) agar request berjalan paralel 
+    # tanpa memicu pembatasan (rate-limit) dari server penyedia SMS
+    with ThreadPoolExecutor(max_workers=12) as executor:
         futures = [
             executor.submit(process_number, rng, n, fc, cd) 
             for rng, n, fc, cd in all_tasks
