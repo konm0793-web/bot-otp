@@ -119,7 +119,7 @@ class RateLimiter:
                 self.calls = [t for t in self.calls if now - t < self.period]
             self.calls.append(now)
 
-ivas_limiter = RateLimiter(max_calls=6, period=3.0)
+ivas_limiter = RateLimiter(max_calls=5, period=3.0)
 
 def get_base():
     with _worker_lock:
