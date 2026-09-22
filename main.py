@@ -325,6 +325,7 @@ def get_numbers(acc, rng, _retry=0):
         return get_numbers(acc, rng, _retry + 1)
     if r.status_code == 429 or "/login" in str(r.url):
         return []
+
     soup    = BeautifulSoup(r.text, "html.parser")
     numbers = []
     for div in soup.find_all("div", onclick=True):
@@ -334,8 +335,21 @@ def get_numbers(acc, rng, _retry=0):
                 numbers.append(val)
         except:
             pass
-    return list(set(numbers))
 
+    # ☆☆☆ PENTING: dedup TAPI JAGA URUTAN ☆☆☆
+    seen = set()
+    ordered = []
+    for n in numbers:
+        if n not in seen:
+            seen.add(n)
+            ordered.append(n)
+
+    # Log untuk verifikasi urutan
+    if ordered:
+        _log("NUM", f"rng={rng} first={ordered[0]} last={ordered[-1]} count={len(ordered)}", Fore.MAGENTA)
+
+    return ordered
+    
 def get_sms(acc, rng, number, _retry=0):
     ivas_limiter.wait()
     
