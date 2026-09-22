@@ -762,6 +762,56 @@ def tg_update_listener():
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 _OTP_RE = re.compile(r"\b\d{3}[- ]?\d{3}\b")
 
+def process_number(acc, rng, num, fallback_country, code):
+    """Cek SMS 1 nomor, forward OTP kalau ada yang baru."""
+    label = f"akun #{acc['idx']}"
+
+    full_num = normalize_number(num, code)
+    if not full_num.isdigit():
+        return False
+
+    try:
+        sms_list = get_sms(acc, rng, num)
+    except Exception as e:
+        _log("SMS", f"{label}: {e}", Fore.YELLOW)
+        return False
+
+    local_found = False
+    for sms in sms_list:
+        clean = re.sub(r"\s+", " ", sms.replace("<#>", "")).strip()
+        uid   = hashlib.md5(f"{num}-{clean}".encode()).hexdigest()
+
+        with _sent_cache_lock:
+            if uid in sent_cache:
+                continue
+
+        if IS_INITIALIZING:
+            cache_add(uid)
+            continue
+
+        matches = _OTP_RE.findall(sms)
+        if not matches:
+            continue
+
+        otp                       = re.sub(r"[^0-9]", "", matches[0])
+        svc                       = detect_service(sms)
+        country, flag, region_code = detect_country_and_flag(full_num, fallback_country)
+        masked                    = mask_phone(full_num)
+
+        msg = build_otp_message(otp, svc, flag, country, region_code, masked, clean)
+        tg_send_otp(otp, msg)
+        cache_add(uid)
+
+        _log(
+            "OTP",
+            f"{svc['icon']} {svc['name']:<10}  {flag} {region_code}  "
+            f"{masked}  →  {otp}",
+            Fore.GREEN,
+        )
+        local_found = True
+
+    return local_found
+    
 def poll_one(acc) -> bool:
     global IS_INITIALIZING
     found = False
@@ -821,7 +871,7 @@ def poll_one(acc) -> bool:
 
         def check(n):
             try:
-                return process_number(rng, n, fallback_country, code)
+                return process_number(acc, rng, n, fallback_country, code)
             except Exception as e:
                 _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
                 return False
