@@ -46,6 +46,12 @@ MAX_CACHE          = 2000
 POLL_INTERVAL_MAX  = 3.0
 KEEPALIVE_INTERVAL = 480    # detik — ping /portal tiap 8 menit
 
+# ─── SCANNING STRATEGY (Anti-Delay) ───
+SCAN_TOP_N      = 5     # cek 5 nomor terbaru saat normal
+SCAN_TOP_N_DEEP = 15    # cek 15 nomor terbaru saat deep scan
+DEEP_SCAN_EVERY = 180   # detik — full sweep tiap 3 menit buat nangkep yang kelewat
+MAX_WORKERS     = 3     # sesuaikan ivas_limiter (jangan > 4)
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # LOGGING
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -758,99 +764,79 @@ _OTP_RE = re.compile(r"\b\d{3}[- ]?\d{3}\b")
 
 def poll_one(acc) -> bool:
     global IS_INITIALIZING
-    found  = False
-    ranges = []
+    found = False
+
     try:
-        ranges = get_ranges(acc)
+        ranges = get_ranges_cached(acc)   # ← ini W ajib, pakai yang CACHED
     except Exception as e:
         _log("RANGE", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
         return False
 
-    def process_number(rng, num, fallback_country, code):
-        full_num = normalize_number(num, code)
-        if not full_num.isdigit():
-            return False
+    if not ranges:
+        return False
 
-        try:
-            sms_list = get_sms(acc, rng, num)
-        except Exception as e:
-            _log("SMS", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
-            return False
+    # State per akun
+    if "seen_head" not in acc: acc["seen_head"] = {}
+    if "last_deep" not in acc: acc["last_deep"] = 0
 
-        local_found = False
-        for sms in sms_list:
-            clean = re.sub(r"\s+", " ", sms.replace("<#>", "")).strip()
-            uid   = hashlib.md5(f"{num}-{clean}".encode()).hexdigest()
+    now  = time.time()
+    deep = (now - acc["last_deep"]) >= DEEP_SCAN_EVERY
+    if deep:
+        acc["last_deep"] = now
+        _log("RANGE", f"akun #{acc['idx']} — DEEP SCAN", Fore.MAGENTA)
 
-            # 1. Cek cache
-            with _sent_cache_lock:
-                if uid in sent_cache:
-                    continue
-
-            # 2. FILTER WARMUP RESTART (Anti-Nyampah ke Group)
-            if IS_INITIALIZING:
-                cache_add(uid)  # Simpan ke cache diam-diam
-                continue        # Skip, jangan kirim ke Telegram!
-
-            matches = _OTP_RE.findall(sms)
-            if not matches:
-                continue
-
-            otp                       = re.sub(r"[^0-9]", "", matches[0])
-            svc                       = detect_service(sms)
-            country, flag, region_code = detect_country_and_flag(full_num, fallback_country)
-            masked                    = mask_phone(full_num)
-
-            msg = build_otp_message(otp, svc, flag, country, region_code, masked, clean)
-            tg_send_otp(otp, msg)
-            cache_add(uid)
-
-            _log(
-                "OTP",
-                f"{svc['icon']} {svc['name']:<10}  {flag} {region_code}  "
-                f"{masked}  →  {otp}",
-                Fore.GREEN,
-            )
-            local_found = True
-
-        return local_found
-
-    for rng in reversed(ranges):
+    for rng in ranges:
         fallback_country, code = parse_range(rng)
         try:
             numbers = get_numbers(acc, rng)
         except Exception as e:
             _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
             continue
+
         if not numbers:
             continue
 
-        def check_single_number(n):
+        # ⬇️ Nomor baru SELALU di paling bawah
+        current_head = numbers[-1]
+        prev_head    = acc["seen_head"].get(rng)
+
+        # Kalau head sama & bukan deep scan → gak ada nomor baru, skip!
+        if not deep and prev_head == current_head:
+            continue
+
+        acc["seen_head"][rng] = current_head
+
+        # Ambil N nomor terbaru (dari bawah)
+        top_n = numbers[-SCAN_TOP_N_DEEP:] if deep else numbers[-SCAN_TOP_N:]
+
+        # Skip nomor yang udah pernah dicek sebelumnya
+        if not deep and prev_head and prev_head in top_n:
+            idx = top_n.index(prev_head)
+            top_n = top_n[idx + 1:]
+            if not top_n:
+                top_n = [current_head]   # fallback: cek yang terbaru aja
+
+        if not top_n:
+            continue
+
+        def check(n):
             try:
-                if process_number(rng, n, fallback_country, code):
-                    return True
+                return process_number(rng, n, fallback_country, code)
             except Exception as e:
                 _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
-            return False
+                return False
 
-        with ThreadPoolExecutor(max_workers=15) as executor:
-            results = list(executor.map(check_single_number, reversed(numbers[-15:])))
-            if any(results):
-                found = True
-                
-                
-                
-                
-                
-            
-            
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
+            results = list(ex.map(check, top_n))
+        if any(results):
+            found = True
 
-    # Matikan mode warmup setelah perulangan pertama selesai
     if IS_INITIALIZING:
         IS_INITIALIZING = False
-        _log("CONFIG", f"akun #{acc['idx']}: Warmup selesai, siap terima OTP baru!", Fore.CYAN)
+        _log("CONFIG", f"akun #{acc['idx']}: Warmup selesai, ready!", Fore.CYAN)
 
     return found
+    
     
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
