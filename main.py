@@ -860,18 +860,84 @@ def poll_one(acc) -> bool:
 
         if not numbers:
             continue
+            
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# PARALLEL RANGE FETCHER
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+def _fetch_one_range(acc, rng):
+    """Fetch 1 range. Return (rng, numbers). Gak pernah raise."""
+    try:
+        return rng, get_numbers(acc, rng)
+    except Exception as e:
+        _log("NUM", f"akun #{acc['idx']} [{rng}]: {e}", Fore.YELLOW)
+        return rng, []
 
-        # ⬇️ Nomor baru SELALU di paling bawah
+
+def poll_ranges_parallel(acc, ranges, max_workers=RANGE_FETCH_WORKERS):
+    """Fetch semua range PARALEL. Return dict {rng: [nomor,...]}."""
+    results = {}
+    if not ranges:
+        return results
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = [pool.submit(_fetch_one_range, acc, rng) for rng in ranges]
+        for fut in as_completed(futures):
+            try:
+                rng, nums = fut.result()
+                results[rng] = nums
+            except Exception as e:
+                _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
+    return results
+
+
+def poll_one(acc) -> bool:
+    global IS_INITIALIZING
+    found = False
+
+    try:
+        ranges = get_ranges_cached(acc)
+    except Exception as e:
+        _log("RANGE", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
+        return False
+
+    if not ranges:
+        return False
+
+    # ━━ State per akun ━━
+    if "seen_head" not in acc: acc["seen_head"] = {}
+    if "last_deep" not in acc: acc["last_deep"] = 0
+
+    now  = time.time()
+    deep = (now - acc["last_deep"]) >= DEEP_SCAN_EVERY
+    if deep:
+        acc["last_deep"] = now
+        _log("RANGE", f"akun #{acc['idx']} — DEEP SCAN", Fore.MAGENTA)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # STEP 1: FETCH SEMUA RANGE PARALEL (ini yang bikin ngebut)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    numbers_by_rng = poll_ranges_parallel(acc, ranges)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # STEP 2: DETEKSI HEAD + CEK SMS PER RANGE
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    for rng, numbers in numbers_by_rng.items():
+        fallback_country, code = parse_range(rng)
+
+        if not numbers:
+            continue
+
+        # Nomor baru SELALU di paling bawah
         current_head = numbers[-1]
         prev_head    = acc["seen_head"].get(rng)
 
-        # Kalau head sama & bukan deep scan → gak ada nomor baru, skip!
+        # Head sama & bukan deep → skip
         if not deep and prev_head == current_head:
             continue
 
         acc["seen_head"][rng] = current_head
 
-        # Ambil N nomor terbaru (dari bawah)
+        # Ambil N nomor terbaru
         top_n = numbers[-SCAN_TOP_N_DEEP:] if deep else numbers[-SCAN_TOP_N:]
 
         # Skip nomor yang udah pernah dicek sebelumnya
@@ -879,14 +945,17 @@ def poll_one(acc) -> bool:
             idx = top_n.index(prev_head)
             top_n = top_n[idx + 1:]
             if not top_n:
-                top_n = [current_head]   # fallback: cek yang terbaru aja
+                top_n = [current_head]
 
         if not top_n:
             continue
 
-        def check(n):
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # STEP 3: CEK SMS TIAP NOMOR PARALEL
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        def check(n, _rng=rng, _fb=fallback_country, _code=code):
             try:
-                return process_number(acc, rng, n, fallback_country, code)
+                return process_number(acc, _rng, n, _fb, _code)
             except Exception as e:
                 _log("NUM", f"akun #{acc['idx']}: {e}", Fore.YELLOW)
                 return False
@@ -901,6 +970,7 @@ def poll_one(acc) -> bool:
         _log("CONFIG", f"akun #{acc['idx']}: Warmup selesai, ready!", Fore.CYAN)
 
     return found
+    
     
     
 
