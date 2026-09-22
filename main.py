@@ -50,8 +50,8 @@ KEEPALIVE_INTERVAL = 480    # detik — ping /portal tiap 8 menit
 SCAN_TOP_N      = 5     # cek 5 nomor terbaru saat normal
 SCAN_TOP_N_DEEP = 15    # cek 15 nomor terbaru saat deep scan
 DEEP_SCAN_EVERY = 180   # detik — full sweep tiap 3 menit buat nangkep yang kelewat
-MAX_WORKERS     = 3     # sesuaikan ivas_limiter (jangan > 4)
-RANGE_FETCH_WORKERS = 5   # ★ buat fetch semua range paralel
+MAX_WORKERS     = 2     # sesuaikan ivas_limiter (jangan > 4)
+RANGE_FETCH_WORKERS = 3   # ★ buat fetch semua range paralel
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # LOGGING
@@ -119,7 +119,7 @@ class RateLimiter:
                 self.calls = [t for t in self.calls if now - t < self.period]
             self.calls.append(now)
 
-ivas_limiter = RateLimiter(max_calls=10, period=3.0)  # ★ naik dari 2 ke 10
+ivas_limiter = RateLimiter(max_calls=6, period=3.0)
 
 def get_base():
     with _worker_lock:
