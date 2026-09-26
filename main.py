@@ -30,8 +30,9 @@ init(autoreset=True)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # CONFIG
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-BOT_TOKEN    = os.getenv("BOT_TOKEN", "")   # wajib diset via env var
+BOT_TOKEN    = "8879538187:AAFrmEwTOZvLeQh5Xyq_OyZ15Q9mrti-_io"   # langsung isi token di sini
 OWNER_ID     = int(os.getenv("OWNER_ID", "0"))
+
 
 # Grup default yang SELALU menerima OTP (tetap ada meskipun tidak /addbot)
 DEFAULT_TARGET = -1003686221386
