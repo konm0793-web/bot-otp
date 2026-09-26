@@ -164,10 +164,17 @@ def load_cookies():
             data = json.load(f)
         if not data:
             return []
+        
+        # Format list dari Ekstensi Browser (EditThisCookie / Get cookies.txt)
         if isinstance(data, list):
-            if all(isinstance(x, dict) and "name" in x and "value" in x for x in data):
-                return [{x["name"]: x["value"] for x in data}]
+            cookie_dict = {}
+            for item in data:
+                if isinstance(item, dict) and "name" in item and "value" in item:
+                    cookie_dict[item["name"]] = item["value"]
+            if cookie_dict:
+                return [cookie_dict]
             return data
+            
         if isinstance(data, dict) and all(isinstance(v, dict) for v in data.values()):
             return list(data.values())
         if isinstance(data, dict):
