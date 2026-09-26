@@ -178,11 +178,21 @@ def load_cookies():
 
 def make_session(cookies: dict, timeout=30):
     hdrs = {
-        "User-Agent":       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                            "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,id;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
         "X-Requested-With": "XMLHttpRequest",
-        "Origin":           "https://ivasms.com",
-        "Referer":          "https://ivasms.com/",
+        "Origin": "https://ivasms.com",
+        "Referer": "https://ivasms.com/",
     }
     s = httpx.Client(
         follow_redirects=True,
@@ -192,6 +202,7 @@ def make_session(cookies: dict, timeout=30):
     )
     s.cookies.update(cookies)
     return s
+    
 
 _recv_csrf_cache = {}
 RECV_CSRF_TTL    = 900
@@ -888,15 +899,19 @@ def keepalive_worker(accounts):
             for _ in range(len(WORKER_POOL)):
                 base = get_base()
                 try:
-                    r = acc["session"].get(f"{base}/portal", timeout=15)
+                    # Ping langsung ke endpoint halaman SMS yang valid
+                    r = acc["session"].get(f"{base}/portal/sms/received", timeout=15)
                     if is_worker_blocked(r):
                         mark_worker_limited(base)
                         continue
-                    if r.status_code == 200 and "/login" not in str(r.url):
+
+                    # Selama tidak terlempar ke halaman /login, sesi dianggap VALID
+                    if "/login" not in str(r.url) and r.status_code in (200, 301, 302):
                         _recv_csrf_cache.pop(idx, None)
                         _log("KA-OK", f"akun #{idx} — session aktif ✓", Fore.GREEN)
                         session_ok = True
                         break
+                    
                     if "/login" in str(r.url):
                         break
                 except Exception as e:
@@ -923,7 +938,7 @@ def keepalive_worker(accounts):
             _last_keepalive[idx] = now
             time.sleep(2)
         time.sleep(60)
-
+        
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # HTTP HEALTH SERVER
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
